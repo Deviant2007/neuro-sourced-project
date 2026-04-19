@@ -1,41 +1,50 @@
-// Storage helper — mirrors window.storage API using localStorage
+import { db } from './lib/firebase';
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
+
+// Firestore key-value store — drop-in replacement for the old localStorage adapter.
+// All data lives in the "kv_store" collection, one document per key.
+const COLLECTION = 'kv_store';
+
 const storage = {
   async get(key) {
     try {
-      const val = localStorage.getItem(key);
-      return val ? { value: val } : null;
+      const snap = await getDoc(doc(db, COLLECTION, key));
+      return snap.exists() ? { value: snap.data().value } : null;
     } catch (e) {
       return null;
     }
   },
+
   async set(key, value) {
     try {
-      localStorage.setItem(key, value);
+      await setDoc(doc(db, COLLECTION, key), { value, updatedAt: new Date().toISOString() });
       return true;
     } catch (e) {
       return null;
     }
   },
+
   async delete(key) {
     try {
-      localStorage.removeItem(key);
+      await deleteDoc(doc(db, COLLECTION, key));
       return true;
     } catch (e) {
       return null;
     }
   },
+
   async list(prefix) {
     try {
+      const snap = await getDocs(collection(db, COLLECTION));
       const keys = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!prefix || key.startsWith(prefix)) keys.push(key);
-      }
+      snap.forEach(d => {
+        if (!prefix || d.id.startsWith(prefix)) keys.push(d.id);
+      });
       return { keys };
     } catch (e) {
       return { keys: [] };
     }
-  }
+  },
 };
 
 export default storage;
