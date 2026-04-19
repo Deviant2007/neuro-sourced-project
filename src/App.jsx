@@ -89,15 +89,29 @@ function makeEmail(lead) {
   return templates[Math.floor(Math.random() * templates.length)];
 }
 
-async function callAI(prompt, useSearch) {
+async function webSearch(query) {
+  try {
+    var tavilyKey = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_TAVILY_API_KEY) || "";
+    if (!tavilyKey || tavilyKey === "your-tavily-key-here") return null;
+    var res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: tavilyKey, query: query, search_depth: "basic", max_results: 6, include_answer: false })
+    });
+    var data = await res.json();
+    if (!data.results || !data.results.length) return null;
+    return data.results.map(function (r) { return r.title + "\n" + r.url + "\n" + (r.content || "").slice(0, 300); }).join("\n\n");
+  } catch (e) { return null; }
+}
+
+async function callAI(prompt, context) {
   try {
     var apiKey = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_NEBIUS_API_KEY) || "";
     var messages = [];
-    if (useSearch) {
-      messages.push({ role: "system", content: "You are a business research assistant with deep knowledge of US healthcare clinics, med spas, wellness centers, and specialty medical practices. When asked to find businesses, draw on your knowledge to provide realistic, specific business details including real-sounding names, addresses, phone numbers, and emails for the city requested. Always return valid JSON." });
-    }
+    messages.push({ role: "system", content: "You are a business research assistant specializing in US healthcare clinics, med spas, wellness centers, and specialty medical practices. Always return valid JSON when asked." });
+    if (context) { messages.push({ role: "user", content: "Here is real search data to use:\n\n" + context }); messages.push({ role: "assistant", content: "Got it, I will use this real data to answer accurately." }); }
     messages.push({ role: "user", content: prompt });
-    var body = { model: "Kimi-K2.5", max_tokens: 1500, messages: messages, temperature: 0.7 };
+    var body = { model: "Kimi-K2.5", max_tokens: 1500, messages: messages, temperature: 0.4 };
     var headers = { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey };
     var res = await fetch("https://api.studio.nebius.com/v1/chat/completions", { method: "POST", headers: headers, body: JSON.stringify(body) });
     var data = await res.json();
@@ -349,7 +363,12 @@ export default function NeuroSourced() {
     var vert = VERTICALS[vertIndex.current % VERTICALS.length];
     addActivity("Scout", "S", "#00d4ff", "Searching " + vert + "s in " + city + "...");
 
-    var result = await callAI("Search for " + vert + " businesses in " + city + ". Find 3-5 REAL businesses with UNIQUE names and different emails. Return ONLY a JSON array: [{\"company\":\"...\",\"name\":\"...\",\"phone\":\"...\",\"email\":\"...\",\"website\":\"...\",\"address\":\"...\",\"vertical\":\"" + vert + "\",\"location\":\"" + city + "\"}]. No other text.", true);
+    var searchResults = await webSearch(vert + " " + city + " contact phone email");
+    var prompt = searchResults
+      ? "Using the real search results above, extract business details and return ONLY a JSON array of 3-5 businesses: [{\"company\":\"...\",\"name\":\"...\",\"phone\":\"...\",\"email\":\"...\",\"website\":\"...\",\"address\":\"...\",\"vertical\":\"" + vert + "\",\"location\":\"" + city + "\"}]. Use real names and contact info from the search data. No other text."
+      : "Find 3-5 " + vert + " businesses in " + city + " with realistic contact details. Return ONLY a JSON array: [{\"company\":\"...\",\"name\":\"...\",\"phone\":\"...\",\"email\":\"...\",\"website\":\"...\",\"address\":\"...\",\"vertical\":\"" + vert + "\",\"location\":\"" + city + "\"}]. No other text.";
+
+    var result = await callAI(prompt, searchResults);
 
     if (!result) {
       addActivity("Scout", "S", "#f87171", "API call failed for " + city + " — add leads manually or retry");
@@ -416,7 +435,8 @@ export default function NeuroSourced() {
     if (!target) { addActivity("Prep", "P", "#fbbf24", "No leads need prep"); return; }
     preppedLeadIds.current.add(target.id);
     addActivity("Prep", "P", "#fbbf24", "Researching " + target.company + "...");
-    var result = await callAI("Research " + target.company + ", a " + target.vertical + " in " + target.location + ". Which peptides are relevant: Semaglutide, Tirzepatide, BPC-157, NAD+, Sermorelin? Suggest a cold call opening line. Return ONLY JSON: {\"summary\":\"...\",\"products\":\"...\",\"opener\":\"...\"}", true);
+    var searchResults = await webSearch(target.company + " " + target.location + " " + target.vertical);
+    var result = await callAI("Based on what you know about " + target.company + ", a " + target.vertical + " in " + target.location + ": which peptides are most relevant (Semaglutide, Tirzepatide, BPC-157, NAD+, Sermorelin)? Write a cold call opening line. Return ONLY JSON: {\"summary\":\"...\",\"products\":\"...\",\"opener\":\"...\"}", searchResults);
     var parsed = parseJSON(result);
     if (parsed && parsed.summary) {
       setLeads(function (prev) { return prev.map(function (l) { return l.id === target.id ? Object.assign({}, l, { notes: "[PREP] " + parsed.summary + " | " + parsed.products + " | Opener: " + parsed.opener }) : l; }); });
