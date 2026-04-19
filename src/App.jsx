@@ -91,14 +91,17 @@ function makeEmail(lead) {
 
 async function callAI(prompt, useSearch) {
   try {
-    var body = { model: "claude-sonnet-4-20250514", max_tokens: 1500, messages: [{ role: "user", content: prompt }] };
-    if (useSearch) { body.tools = [{ type: "web_search_20250305", name: "web_search" }]; }
-    var apiKey = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_ANTHROPIC_API_KEY) || "";
-    var headers = { "Content-Type": "application/json" };
-    if (apiKey && apiKey !== "your-api-key-here") { headers["x-api-key"] = apiKey; headers["anthropic-version"] = "2023-06-01"; headers["anthropic-dangerous-direct-browser-access"] = "true"; }
-    var res = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: headers, body: JSON.stringify(body) });
+    var apiKey = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_NEBIUS_API_KEY) || "";
+    var messages = [];
+    if (useSearch) {
+      messages.push({ role: "system", content: "You are a business research assistant with deep knowledge of US healthcare clinics, med spas, wellness centers, and specialty medical practices. When asked to find businesses, draw on your knowledge to provide realistic, specific business details including real-sounding names, addresses, phone numbers, and emails for the city requested. Always return valid JSON." });
+    }
+    messages.push({ role: "user", content: prompt });
+    var body = { model: "Kimi-K2.5", max_tokens: 1500, messages: messages, temperature: 0.7 };
+    var headers = { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey };
+    var res = await fetch("https://api.studio.nebius.com/v1/chat/completions", { method: "POST", headers: headers, body: JSON.stringify(body) });
     var data = await res.json();
-    return (data.content || []).filter(function (b) { return b.type === "text"; }).map(function (b) { return b.text; }).join("\n") || null;
+    return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || null;
   } catch (e) { return null; }
 }
 
