@@ -111,9 +111,9 @@ async function callAI(prompt, context) {
     messages.push({ role: "system", content: "You are a business research assistant specializing in US healthcare clinics, med spas, wellness centers, and specialty medical practices. Always return valid JSON when asked." });
     if (context) { messages.push({ role: "user", content: "Here is real search data to use:\n\n" + context }); messages.push({ role: "assistant", content: "Got it, I will use this real data to answer accurately." }); }
     messages.push({ role: "user", content: prompt });
-    var body = { model: "Kimi-K2.5", max_tokens: 1500, messages: messages, temperature: 0.4 };
+    var body = { model: "moonshotai/Kimi-K2.5-fast", max_tokens: 3000, messages: messages, temperature: 0.4 };
     var headers = { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey };
-    var res = await fetch("https://api.studio.nebius.com/v1/chat/completions", { method: "POST", headers: headers, body: JSON.stringify(body) });
+    var res = await fetch("https://api.studio.nebius.ai/v1/chat/completions", { method: "POST", headers: headers, body: JSON.stringify(body) });
     var data = await res.json();
     return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || null;
   } catch (e) { return null; }
